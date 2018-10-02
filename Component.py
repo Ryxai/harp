@@ -1,4 +1,3 @@
-from typing import *
 import inspect
 from heapqueue import *
 
@@ -8,15 +7,17 @@ class Message:
                  func: str,
                  key: str,
                  value: Union[Generic, Callable[Generic, bool]],
-                 accessor: Union[Callable[Generic, bool], ]
+                 accessor: Union[Callable[Generic, bool], None],
+                 mutator: Union[Callable[Generic, bool], None],
                  context: Union[Generic, None],
                  contents: Any):
         self.func = func
         self.key = key
         self.value = value
+        self.accessor = accessor
+        self.mutator = mutator
         self.context = context
         self.contents = contents
-        self.accessors
 
 
 class Component:
@@ -85,12 +86,26 @@ class Component:
     def push_message(self, message: Message) -> NoReturn:
         self.message_prioritizer.push(self.messages, message)
 
-    def get_next_message(self) -> Generic:
+    def get_next_message(self) -> Union[Message, None]:
         return self.message_prioritizer.pop(self.messages)
 
-    def execute_message_contents(self, message: Message) -> Union[KeyError, Generic]:
+    def execute_message_contents(self, message: Message) -> Union[KeyError, PermissionError, Generic]:
         if message.func not in self.exec_list:
             return KeyError("Function not available")
-        # Use inpsection to get argnames
+        # Use inspection to get argnames
         func = self.exec_list[message.func]
-        args = inspect.signature(func)
+        arg_names = inspect.signature(func).parameters.keys()
+        # Construct dict with argnames for kwargs throw error if fail
+        arg_map = dict()
+        for arg_name in arg_names:
+            arg = getattr(message, arg_name, None)
+            if not arg:
+                raise SyntaxError("Failure to match arguments properly",
+                                  arg_name,
+                                  message,
+                                  self)
+            else:
+                arg_map[arg_name] = arg
+        return func(**arg_map)
+
+

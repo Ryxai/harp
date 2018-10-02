@@ -1,14 +1,22 @@
 from typing import *
-from inspect import *
+import inspect
 from heapqueue import *
 
 
 class Message:
-    def __init__(self, func: str, key: str, context: Any, contents: Any):
+    def __init__(self,
+                 func: str,
+                 key: str,
+                 value: Union[Generic, Callable[Generic, bool]],
+                 accessor: Union[Callable[Generic, bool], ]
+                 context: Union[Generic, None],
+                 contents: Any):
         self.func = func
         self.key = key
+        self.value = value
         self.context = context
         self.contents = contents
+        self.accessors
 
 
 class Component:
@@ -19,8 +27,8 @@ class Component:
         self.immutables: Dict[str, bool] = dict()
         self.messages: List[Generic] = []
         self.message_prioritizer: HeapQueue = HeapQueue(message_key_func)
-        self.exec_list : List[str] = [func_name for func_name in getmembers(self, ismethod)]
-
+        self.exec_list: Dict[str, Callable] = {func_name: bound_method for func_name, bound_method in
+                                               inspect.getmembers(self, inspect.ismethod)}
 
     def get(self, key: str, context: Generic) -> Union[KeyError, Generic, None]:
         if key not in self.registers or key not in self.accessors:
@@ -49,7 +57,7 @@ class Component:
         del self.mutators[key]
         del self.immutables[key]
 
-    def add(self, key: str, accessor: Callable[[Generic], bool], mutator: Callable[[Generic], bool], immutability,
+    def add(self, key: str, accessor: Callable[Generic, bool], mutator: Callable[Generic, bool], immutability: bool,
             value: Any) -> Union[KeyError, NoReturn]:
         if key in self.registers or key in self.accessors or key in self.mutators or key in self.immutables:
             return KeyError("Register already exists")
@@ -80,9 +88,9 @@ class Component:
     def get_next_message(self) -> Generic:
         return self.message_prioritizer.pop(self.messages)
 
-    def execute_message_contents(self, message : Message) -> Union[KeyError, Generic]:
+    def execute_message_contents(self, message: Message) -> Union[KeyError, Generic]:
         if message.func not in self.exec_list:
             return KeyError("Function not available")
-        #Use inpsection to get argnames
-
-
+        # Use inpsection to get argnames
+        func = self.exec_list[message.func]
+        args = inspect.signature(func)

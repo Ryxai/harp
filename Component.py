@@ -33,26 +33,26 @@ class Component:
 
     def get(self, key: str, context: Generic) -> Union[KeyError, Generic, None]:
         if key not in self.registers or key not in self.accessors:
-            return KeyError("Register does not exist")
+            return KeyError("Register does not exist", self, key, context)
         return self.registers[key] if self.mutators[key](context) else None
 
     def eval(self, key: str, context: Generic, content: Generic) -> Union[KeyError, Any]:
         if key not in self.registers or key not in self.accessors:
-            return KeyError("Register does not exist")
+            return KeyError("Register does not exist", self, key, context, content)
         return self.registers[key](content) if self.mutators[key][context] else None
 
     def update(self, key: str, value: Generic, context: Generic) -> Union[KeyError, NoReturn]:
         if key not in self.registers or key not in self.mutators:
-            return KeyError("Register does not exist")
+            return KeyError("Register does not exist", self, key, value, context)
         if self.mutators[key](context):
             self.registers[key] = value
 
     def delete(self, key: str, context: Generic) -> Union[KeyError, PermissionError, NoReturn]:
         if key not in self.registers or key not in self.accessors or key not in self.mutators or \
                 key not in self.immutables:
-            return PermissionError("Register cannot be removed")
+            return PermissionError("Register cannot be removed", self, key, context)
         if self.immutables[key] and self.mutators[key](context):
-            return PermissionError("Register cannot be deleted")
+            return PermissionError("Register cannot be deleted", self, key, context)
         del self.registers[key]
         del self.accessors[key]
         del self.mutators[key]
@@ -61,7 +61,7 @@ class Component:
     def add(self, key: str, accessor: Callable[Generic, bool], mutator: Callable[Generic, bool], immutability: bool,
             value: Any) -> Union[KeyError, NoReturn]:
         if key in self.registers or key in self.accessors or key in self.mutators or key in self.immutables:
-            return KeyError("Register already exists")
+            return KeyError("Register already exists", self, key, accessor, mutator, immutability)
         self.registers[key] = value
         self.accessors[key] = accessor
         self.mutators[key] = mutator
@@ -79,7 +79,7 @@ class Component:
         if key not in self.registers or key not in self.accessors or key not in self.immutables:
             return KeyError("Register does not exist")
         if self.immutables[key]:
-            return PermissionError("Register is immutable cannot modify accessor")
+            return PermissionError("Register is immutable cannot modify accessor", self, key, value)
         else:
             self.accessors[key] = value
 
@@ -107,5 +107,7 @@ class Component:
             else:
                 arg_map[arg_name] = arg
         return func(**arg_map)
+
+    def
 
 

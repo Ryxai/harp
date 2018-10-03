@@ -20,7 +20,16 @@ class Message:
         self.contents = contents
 
 
+class Frame:
+    def __init__(self, content: Any):
+        self.header = None
+        self.content = content
+
+
 class Component:
+
+    entities: Dict[str, 'Component'] = dict()
+
     def __init__(self, message_key_func: Callable[Generic, int]):
         self.registers: Dict[str, Any] = dict()
         self.accessors: Dict[str, Callable[Generic, bool]] = dict()
@@ -30,6 +39,10 @@ class Component:
         self.message_prioritizer: HeapQueue = HeapQueue(message_key_func)
         self.exec_list: Dict[str, Callable] = {func_name: bound_method for func_name, bound_method in
                                                inspect.getmembers(self, inspect.ismethod)}
+        self.input_buffer: List[Frame] = []
+        self.output_buffer: List[Frame] = []
+        self.connected_entities: List[str] = []
+        self.entities[self.__name__] = self
 
     def get(self, key: str, context: Generic) -> Union[KeyError, Generic, None]:
         if key not in self.registers or key not in self.accessors:
@@ -93,21 +106,20 @@ class Component:
         if message.func not in self.exec_list:
             return KeyError("Function not available")
         # Use inspection to get argnames
-        func = self.exec_list[message.func]
-        arg_names = inspect.signature(func).parameters.keys()
+        func: Callable = self.exec_list[message.func]
+        arg_names: List[str] = inspect.signature(func).parameters.keys()
         # Construct dict with argnames for kwargs throw error if fail
-        arg_map = dict()
+        arg_map: Dict[str, Any] = dict()
         for arg_name in arg_names:
-            arg = getattr(message, arg_name, None)
+            arg: Any = getattr(message, arg_name, None)
             if not arg:
                 raise SyntaxError("Failure to match arguments properly",
                                   arg_name,
                                   message,
                                   self)
             else:
-                arg_map[arg_name] = arg
+                arg_map[arg_name]: Any = arg
         return func(**arg_map)
 
-    def
-
+    #Need to develop interface for communication, special items for allow, remove, update add, delete entities
 

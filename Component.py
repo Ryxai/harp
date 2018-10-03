@@ -21,8 +21,8 @@ class Message:
 
 
 class Frame:
-    def __init__(self, content: Any):
-        self.header = None
+    def __init__(self, header: Generic, content: Any):
+        self.header = header
         self.content = content
 
 
@@ -30,7 +30,13 @@ class Component:
 
     entities: Dict[str, 'Component'] = dict()
 
-    def __init__(self, message_key_func: Callable[Generic, int]):
+    def __init__(self,
+                 message_key_func: Callable[Generic, int],
+                 connection_criteria: Callable[str, Generic, bool] = lambda s, context: True,
+                 disconnection_criteria: Callable[str, Generic, bool] = lambda s, context: True,
+                 is_connection_criteria_mutable: bool = True,
+                 is_disconnection_criteria_mutable: bool = True
+                 ):
         self.registers: Dict[str, Any] = dict()
         self.accessors: Dict[str, Callable[Generic, bool]] = dict()
         self.mutators: Dict[str, Callable[Generic, bool]] = dict()
@@ -41,7 +47,11 @@ class Component:
                                                inspect.getmembers(self, inspect.ismethod)}
         self.input_buffer: List[Frame] = []
         self.output_buffer: List[Frame] = []
+        self.connection_criteria = connection_criteria
+        self.disconnection_criteria = disconnection_criteria
         self.connected_entities: List[str] = []
+        self.is_connection_criteria_mutable = is_connection_criteria_mutable
+        self.is_disconnection_criteria_mutable = is_disconnection_criteria_mutable
         self.entities[self.__name__] = self
 
     def get(self, key: str, context: Generic) -> Union[KeyError, Generic, None]:
@@ -121,5 +131,32 @@ class Component:
                 arg_map[arg_name]: Any = arg
         return func(**arg_map)
 
-    #Need to develop interface for communication, special items for allow, remove, update add, delete entities
+    def modify_connection_criteria(self, value: Callable[str, Generic, bool]) -> Union[PermissionError, NoReturn]:
+        if not self.is_connection_criteria_mutable:
+            return PermissionError("Criteria is immutable and cannot be modified", self, value)
+        self.connection_criteria = value
+
+    def modify_disconnection_criteria(self, value: Callable[str, Generic, bool]) -> Union[PermissionError, NoReturn]:
+        if not self.is_disconnection_criteria_mutable:
+            return PermissionError("Criteria is immutable and cannot be modified", self, value)
+        self.disconnection_criteria = value
+
+    def connect_entity(self, value: str, context: Generic) -> Union[KeyError, PermissionError, NoReturn]:
+        if not self.connection_criteria(value, context):
+            return PermissionError("Criteria is not sastisfied")
+        if str not in self.entities.keys:
+            return KeyError("Entity does not exist")
+        self.connected_entities.append(value)
+
+    def disconnect_entity(self, value: str, context: Generic) -> Union[KeyError, PermissionError, NoReturn]:
+        if not self.disconnection_criteria(value, context):
+            return PermissionError("Criteria is not sastisfied")
+        if str not in self.entities.keys:
+            return KeyError("Entity does not exist")
+        if str not in self.connected_entities:
+            return KeyError("Entity is not connected")
+        self.connected_entities.remove(value)
+
+    def message_entity(self, value: str, message: Message) -> Union[ConnectionError,NoReturn]:
+        pass
 

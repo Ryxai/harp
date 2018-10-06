@@ -4,13 +4,15 @@ from heapqueue import *
 
 class Message:
     def __init__(self,
-                 func: str,
-                 key: str,
-                 value: Union[Generic, Callable[Generic, bool]],
-                 accessor: Union[Callable[Generic, bool], None],
-                 mutator: Union[Callable[Generic, bool], None],
-                 context: Union[Generic, None],
-                 contents: Any):
+                 func: str = "",
+                 key: str = "",
+                 value: Union[Generic, Callable[Generic, bool]] = None,
+                 accessor: Union[Callable[Generic, bool], None] = None,
+                 mutator: Union[Callable[Generic, bool], None] = None,
+                 context: Union[Generic, None] = None,
+                 contents: Any = None,
+                 criteria: Union[Callable[str, Generic, bool], None] = None,
+                 entity: str = ""):
         self.func = func
         self.key = key
         self.value = value
@@ -18,6 +20,8 @@ class Message:
         self.mutator = mutator
         self.context = context
         self.contents = contents
+        self.criteria = criteria
+        self.entity = entity
 
 
 class Frame:
@@ -131,32 +135,39 @@ class Component:
                 arg_map[arg_name]: Any = arg
         return func(**arg_map)
 
-    def modify_connection_criteria(self, value: Callable[str, Generic, bool]) -> Union[PermissionError, NoReturn]:
+    def modify_connection_criteria(self, criteria: Callable[str, Generic, bool]) -> Union[PermissionError, NoReturn]:
         if not self.is_connection_criteria_mutable:
-            return PermissionError("Criteria is immutable and cannot be modified", self, value)
-        self.connection_criteria = value
+            return PermissionError("Criteria is immutable and cannot be modified", self, criteria)
+        self.connection_criteria = criteria
 
-    def modify_disconnection_criteria(self, value: Callable[str, Generic, bool]) -> Union[PermissionError, NoReturn]:
+    def modify_disconnection_criteria(self, criteria: Callable[str, Generic, bool]) -> Union[PermissionError, NoReturn]:
         if not self.is_disconnection_criteria_mutable:
-            return PermissionError("Criteria is immutable and cannot be modified", self, value)
-        self.disconnection_criteria = value
+            return PermissionError("Criteria is immutable and cannot be modified", self, criteria)
+        self.disconnection_criteria = criteria
 
-    def connect_entity(self, value: str, context: Generic) -> Union[KeyError, PermissionError, NoReturn]:
-        if not self.connection_criteria(value, context):
-            return PermissionError("Criteria is not sastisfied")
+    def connect_entity(self, entity: str, context: Generic) -> Union[KeyError, PermissionError, NoReturn]:
+        if not self.connection_criteria(entity, context):
+            return PermissionError("Criteria is not sastisfied", self, entity, context)
         if str not in self.entities.keys:
-            return KeyError("Entity does not exist")
-        self.connected_entities.append(value)
+            return KeyError("Entity does not exist", self, entity, context)
+        self.connected_entities.append(entity)
 
-    def disconnect_entity(self, value: str, context: Generic) -> Union[KeyError, PermissionError, NoReturn]:
-        if not self.disconnection_criteria(value, context):
-            return PermissionError("Criteria is not sastisfied")
+    def disconnect_entity(self, entity: str, context: Generic) -> Union[KeyError, PermissionError, NoReturn]:
+        if not self.disconnection_criteria(entity, context):
+            return PermissionError("Criteria is not sastisfied", self, entity, context)
         if str not in self.entities.keys:
-            return KeyError("Entity does not exist")
+            return KeyError("Entity does not exist", self, entity, context)
         if str not in self.connected_entities:
-            return KeyError("Entity is not connected")
-        self.connected_entities.remove(value)
+            return KeyError("Entity is not connected", self, entity, context)
+        self.connected_entities.remove(entity)
 
-    def message_entity(self, value: str, message: Message) -> Union[ConnectionError,NoReturn]:
-        pass
+    def message_entity(self, entity: str, message: Message) -> Union[ConnectionError, NoReturn]:
+        # Check if exists, check if connected, pussh messages
+        if entity not in self.entities.keys:
+            return ConnectionError("Entity does not exist", self, entity, message)
+        elif entity not in self.connected_entities:
+            return ConnectionError("Entity is not connected", self, entity, message)
+        else:
+            self.entities[entity].push_message(message)
 
+    # TODO: Narrow down communication API specification

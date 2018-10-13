@@ -3,34 +3,62 @@ from heapqueue import *
 
 
 class Message:
+    """
+    A message passed between two components
+
+    :param: source, A Component, from which the message was sent
+    :param func: A string, the api function of the target to be run
+    :param return_req: A bool, representing whether a return message to source
+    component is required
+    :param key: An optional string, an index into one of the component's
+    dictionaries
+    :param value: An optional (Generic or Callable(Generic) -> bool), the value
+    to be stored/updated
+    :param accessor: An optional Callable(Generic) -> bool, used to validate
+    access to the contents of one of the registers
+    :param mutator: An optional Callable(Generic) -> bool, used to validate the
+     update of one of the registers
+    :param context: An optional generic, a container for additional information
+    relevant to the function call
+    :param criteria: An optional Callable(str, Generic) -> bool, used to
+    evaluate entity linkage manipulation
+    :param entity: An optional string, representing a named component in the construct
+    wide index
+    """
     def __init__(self,
-                 func: str = "",
-                 key: str = "",
+                 source: 'Component',
+                 func: str,
+                 return_req: bool = False,
+                 key: Union[str, None] = None,
                  value: Union[Generic, Callable[Generic, bool]] = None,
                  accessor: Union[Callable[Generic, bool], None] = None,
                  mutator: Union[Callable[Generic, bool], None] = None,
                  context: Union[Generic, None] = None,
-                 contents: Any = None,
                  criteria: Union[Callable[str, Generic, bool], None] = None,
-                 entity: str = ""):
+                 entity: Union[str, None] = None):
+        self.source = source
         self.func = func
+        self.return_req = return_req
         self.key = key
         self.value = value
         self.accessor = accessor
         self.mutator = mutator
         self.context = context
-        self.contents = contents
         self.criteria = criteria
         self.entity = entity
 
 
-class Frame:
-    def __init__(self, header: Generic, content: Any):
-        self.header = header
-        self.content = content
-
-
 class Component:
+    """
+    A representation of a computational unit of some variety. Designed to be sub-classed.
+
+    :param message_key_func: A Callable(Generic) -> int, a key function used for
+    message priority
+    :param connection_criteria: A Callable(str, Generic) -> bool, represents the criteria requirements for
+    connecting another entity to the current entity (unidirectionally)
+    :param disconnection_criteria: A Callable(str, Generic) -> bool, represents the criteria requirements for
+    disconnecting another entity from the current entity (unidirectionally)
+    """
 
     entities: Dict[str, 'Component'] = dict()
 
@@ -49,8 +77,6 @@ class Component:
         self.message_prioritizer: HeapQueue = HeapQueue(message_key_func)
         self.exec_list: Dict[str, Callable] = {func_name: bound_method for func_name, bound_method in
                                                inspect.getmembers(self, inspect.ismethod)}
-        self.input_buffer: List[Frame] = []
-        self.output_buffer: List[Frame] = []
         self.connection_criteria = connection_criteria
         self.disconnection_criteria = disconnection_criteria
         self.connected_entities: List[str] = []
@@ -162,7 +188,6 @@ class Component:
         self.connected_entities.remove(entity)
 
     def message_entity(self, entity: str, message: Message) -> Union[ConnectionError, NoReturn]:
-        # Check if exists, check if connected, pussh messages
         if entity not in self.entities.keys:
             return ConnectionError("Entity does not exist", self, entity, message)
         elif entity not in self.connected_entities:
@@ -170,4 +195,3 @@ class Component:
         else:
             self.entities[entity].push_message(message)
 
-    # TODO: Narrow down communication API specification

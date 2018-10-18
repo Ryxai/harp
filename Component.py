@@ -49,6 +49,16 @@ class Message:
         self.entity = entity
 
 
+class BlockedComponentError(Exception):
+    """
+    Error indicating that a component is blocked (i.e. its message queue is
+    emtpty)
+    """
+
+    def __init__(self, *args, **kwargs):
+        Exception.__init__(self, *args, **kwargs)
+
+
 class Component:
     """
     A representation of a computational unit of some variety. Designed to be sub
@@ -66,7 +76,7 @@ class Component:
     connection_criteria be updated later
     :param is_disconnection)criteria_mutable: A boolean, can the
     disconnection_criteria_mutable can be updated later
-    :param api_permissions: A dictionary of string -> Callable[Generic, bool],
+    :param api_accessibility: A dictionary of string -> Callable[Generic, bool],
     represents availability of certain api functions
     :param api_mutable: A Callable[Generic, bool], representing if the api
     availabilty can be modified
@@ -95,8 +105,8 @@ class Component:
         self.message_prioritizer: HeapQueue = HeapQueue(message_key_func)
         self.exec_list: Dict[str, Callable] = {func_name: bound_method for
                                                func_name, bound_method in
-                                               inspect.getmembers(
-                                                   self, inspect.ismethod)}
+                                               inspect.getmembers(self,
+                                                                  inspect.ismethod)}
         self.connection_criteria = connection_criteria
         self.disconnection_criteria = disconnection_criteria
         self.connected_entities: List[str] = []
@@ -202,15 +212,17 @@ class Component:
         :param key: A string, the register label/index
         :param context: A generic, used to evaluate whether the register can be
         deleted or not.
-        :return:
+        :return: Will return a KeyError if the key does not exist. Will return
+        a PermissionError if the register cannot be deleted. Otherwise does not
+        return anything.
         """
         if key not in self.registers or key not in self.accessors or \
                 key not in self.mutators or \
                 key not in self.immutables:
-            return PermissionError("Register cannot be removed",
-                                   self,
-                                   key,
-                                   context)
+            return KeyError("Register cannot be removed",
+                            self,
+                            key,
+                            context)
         if self.immutables[key] and self.mutators[key](context):
             return PermissionError("Register cannot be deleted",
                                    self,
@@ -227,6 +239,20 @@ class Component:
             mutator: Callable[Generic, bool],
             immutability: bool,
             value: Any) -> Union[KeyError, NoReturn]:
+        """
+        Adds the register with default contents along with the given permissions
+        and values. Returns errors if the add fails.
+        :param key: A string, the register label/identifier
+        :param accessor: A Callable[Generic, bool], evaluates whether the
+        register can be accessed under the current context.
+        :param mutator: A Callable[Generic, bool], evaluates whether the
+        register can be modified under the current context.
+        :param immutability: A boolean, can the accessor/mutator be modified in
+        the future
+        :param value: A generic, the initial value contained within the register
+        :return: Will return a KeyError if the key exists in any context.
+        Otherwise will not return anything.
+        """
         if key in self.registers or \
                 key in self.accessors or \
                 key in self.mutators or \
@@ -244,6 +270,16 @@ class Component:
 
     def modify_mutator(self, key: str, value: Callable[Generic, bool]) -> \
             Union[KeyError, PermissionError, NoReturn]:
+        """
+        Modifies the mutator permission if the modification is allowed. It will
+        return a KeyError or PermissionError on failure.
+        :param key: A string, the register index/label
+        :param value: A Callable[Generic, bool], the updated mutator permission
+        function.
+        :return: Will return a KeyError if the label/identifier does not exist.
+        If the register mutator is immutable, it will return a PermissionError.
+        if the mutator is successfully updated, there is no return value.
+        """
         if key not in self.registers or \
                 key not in self.mutators or \
                 key not in self.immutables:
@@ -256,6 +292,16 @@ class Component:
 
     def modify_accessor(self, key: str, value: Callable[Generic, bool]) -> \
             Union[KeyError, PermissionError, NoReturn]:
+        """
+        Modifies the accessor permission if the modification is allowed. It will
+        return a KeyError or PermissionError on failure.
+        :param key: A string, the register label/index
+        :param value: A Callable[Generic, bool], the updated accessor permission
+        function.
+        :return: Will return a KeyError if the label/identifier does not exist.
+        If the register accessor is immutable, it will return a PermissionError.
+        Otherwise it will return nothing.
+        """
         if key not in self.registers or \
                 key not in self.accessors or \
                 key not in self.immutables:
@@ -270,13 +316,36 @@ class Component:
             self.accessors[key] = value
 
     def push_message(self, message: Message) -> NoReturn:
+        """
+        Add a message to the message queue for the entity.
+        :param message: A message, to be added to the message queue.
+        :return: There is no return value
+        """
         self.message_prioritizer.push(self.messages, message)
 
     def get_next_message(self) -> Union[Message, None]:
+        """
+        Gets the current message from the top of the heapqueue of messages.
+        :return: Returns the next message if there is one, otherwise returns
+        None.
+        """
         return self.message_prioritizer.pop(self.messages)
 
     def execute_message_contents(self, message: Message) -> \
             Union[KeyError, PermissionError, SyntaxError, Generic]:
+        """
+        Given a message, executes thr requested function with the given function
+        body. Depending on the nature of the failure (if there is any) can
+        return a KeyError, PermissionError, or SyntaxError.
+
+        :param message: A message, whose contents contain the function to be
+        executed.
+        :return: If message.func is not in the API list, it will return a
+        KeyError. If the API call is unavailable, it will return a
+        PermissionError. If the function parameters are incorrect and cannot be
+        matched then it will throw a SyntaxError. Otherwise it will return
+        the result of the function call.
+        """
         if message.func not in self.exec_list:
             return KeyError("Function not available", self, message)
         elif not self.api_permissions[message.func](message.func_context):
@@ -300,6 +369,14 @@ class Component:
     def modify_connection_criteria(self,
                                    criteria: Callable[str, Generic, bool]) -> \
             Union[PermissionError, NoReturn]:
+        """
+        Modifies the connection criteria if connection critera is not immutable.
+        :param criteria: A Callable[str, Generic, bool], returns a boolean if a
+        connection is allowed
+        :return: Will return a PermissionError if the criteria is immutable and
+        cannot be changed. If the criteria is changed then there is no return
+        value.
+        """
         if not self.is_connection_criteria_mutable:
             return PermissionError("Criteria is immutable and cannot be "
                                    "modified", self, criteria)
@@ -308,6 +385,14 @@ class Component:
     def modify_disconnection_criteria(self,
                                       criteria: Callable[str, Generic, bool]) -> \
             Union[PermissionError, NoReturn]:
+        """
+        Modifies the disconnection criteria if the disconnection criteria is not
+        immutable.
+        :param criteria: A Callable[str, Generic, bool], returns a boolean if a
+        disconnection is allowed
+        :return:Will return a PermissionError if the criteria is immutable and
+        cannot be changed. If the criteria is changed there is no return value.
+        """
         if not self.is_disconnection_criteria_mutable:
             return PermissionError("Criteria is immutable and cannot be "
                                    "modified",
@@ -317,6 +402,17 @@ class Component:
 
     def connect_entity(self, entity: str, context: Generic) -> \
             Union[KeyError, PermissionError, NoReturn]:
+        """
+        Connects the prescribed entity. If the connection is not allowed or not
+        possible then a PermissionError or KeyError is thrown respectively.
+        :param entity: A string, the label/index of the entity to connect to
+        :param context: A Generic, used to evaluate whether the entity can
+        be connected or not.
+        :return: Will return a PermissionError if the connection is not
+        permitted. Will return a KeyError if the entity label is not found.
+        Otherwise the entity is added to the connected entities and no return
+        value is returned.
+        """
         if not self.connection_criteria(entity, context):
             return PermissionError("Criteria is not satisfied",
                                    self,
@@ -328,6 +424,19 @@ class Component:
 
     def disconnect_entity(self, entity: str, context: Generic) -> \
             Union[KeyError, PermissionError, NoReturn]:
+        """
+        Disconnects a prescribed entity should it be present in the connected
+        entities. Otherwise will return a KeyError or PermissionError if the
+        entity is not connected, does not exist or cannot be disconnected.
+        :param entity: A string, the the label/index of the entity to be
+        disconnected
+        :param context A generic, used to  evaluate whether the enitty can
+        be disconnected or not.
+        :return: Will return a KeyError if the entity label is not found or
+        is not connected. Will return a PermissionError if the entity cannot
+        be disconnected. Otherwise the entity is disconnected and None is
+        returned.
+        """
         if not self.disconnection_criteria(entity, context):
             return PermissionError("Criteria is not satisfied",
                                    self,
@@ -341,6 +450,15 @@ class Component:
 
     def message_entity(self, entity: str, message: Message) -> \
             Union[ConnectionError, NoReturn]:
+        """
+        If a entity is connected to the current entity a message is pushed to
+        its message queue.
+        :param entity: A string, the label/identifier for the given entity
+        :param message: A Message, to be pushed to the specified entity.
+        :return: Will return a ConnectionError if the targeted entity does not
+        exist or is not connected. Otherwise will return None and the Message is
+        pushed to the connected entity.
+        """
         if entity not in self.entities.keys:
             return ConnectionError("Entity does not exist",
                                    self,
@@ -357,8 +475,21 @@ class Component:
     def modify_api_permission(self,
                               key: str,
                               value: Callable[Generic, bool],
-                              context: Generic) ->\
+                              context: Generic) -> \
             Union[KeyError, PermissionError, NoReturn]:
+        """
+        Modify API function by updating it with a new evaluation function. Will
+        return a KeyError or PermissionError if the API cannot be modified.
+        :param key: A string, the name of api function to modify
+        :param value: A Callable[Generic, bool], will update the current API
+        access function.
+        :param context: A Generic, used to evaluate if the API accessor can be
+        updated.
+        :return: Will return a KeyError if the API function name does not exist.
+        Otherwise if the API function cannot be modified will return a
+        PermissionError. If no restrictions are in place, the API accessor
+        will be modified and updated with a return value of None.
+        """
         if key not in self.api_permissions:
             return KeyError("Api function is not available",
                             self,
@@ -366,7 +497,7 @@ class Component:
                             value,
                             context)
         elif not self.api_mutable(context):
-            return PermissionError("Api accessiblity cannot be modified with "
+            return PermissionError("Api accessibility cannot be modified with "
                                    "this context",
                                    self,
                                    key,
@@ -374,3 +505,23 @@ class Component:
                                    context)
         else:
             self.api_permissions[key] = value
+
+    def run(self) -> \
+            Union[KeyError,
+                  SyntaxError,
+                  PermissionError,
+                  BlockedComponentError,
+                  Generic,
+                  NoReturn]:
+        """
+        Retrieves a message from the components message queue and processes it,
+        if the message queue is empty indicates the component is blocked waiting
+        for new messages.
+        :return: Return a BlockedComponentMessage if the queue of the component
+        is empty. Othwise will return the result of the processed message.
+        """
+        message = self.get_next_message()
+        if not Message:
+            return BlockedComponentError("Component queue is empty", self)
+        else:
+            return self.execute_message_contents(message)

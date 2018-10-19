@@ -1,4 +1,5 @@
 import inspect
+from datetime import datetime
 from heapqueue import *
 
 
@@ -30,6 +31,7 @@ class Message:
                  source: 'Component',
                  func: str,
                  func_context: Generic,
+                 metadata: Dict[str, Generic],
                  key: Union[str, None] = None,
                  value: Union[Generic, Callable[Generic, bool]] = None,
                  accessor: Union[Callable[Generic, bool], None] = None,
@@ -37,9 +39,12 @@ class Message:
                  context: Union[Generic, None] = None,
                  criteria: Union[Callable[str, Generic, bool], None] = None,
                  entity: Union[str, None] = None):
+        if metadata is None:
+            metadata = {"timestamp": datetime.now()}
         self.source = source
         self.func = func
         self.func_context = func_context
+        self.metadata = metadata
         self.key = key
         self.value = value
         self.accessor = accessor
@@ -106,7 +111,7 @@ class Component:
         self.exec_list: Dict[str, Callable] = {func_name: bound_method for
                                                func_name, bound_method in
                                                inspect.getmembers(self,
-                                                                  inspect.ismethod)}
+                                                              inspect.ismethod)}
         self.connection_criteria = connection_criteria
         self.disconnection_criteria = disconnection_criteria
         self.connected_entities: List[str] = []
@@ -116,10 +121,19 @@ class Component:
         self.entities[self.__name__] = self
         self.api_mutable = api_mutable
         if not api_accessibility:
-            api_accessibility = {key: (lambda context: True) for
-                                 key in
-                                 self.exec_list.keys()}
-        self.api_permissions = api_accessibility
+            # Default all values are true
+            self.api_permissions = {key: (lambda context: True) for
+                                    key in
+                                    self.exec_list.keys()}
+        elif api_accessibility.keys() != self.exec_list.keys():
+            # Get keys where we have values set other values to True
+            self.api_permissions = {func: (api_accessibility[func]
+                                           if func in api_accessibility.keys()
+                                           else True)
+                                    for func in self.exec_list.keys()}
+        else:
+            # If user covers all inputs set permissions
+            self.api_permissions = api_accessibility
 
     def get(self, key: str, context: Generic) -> \
             Union[KeyError, PermissionError, Generic]:

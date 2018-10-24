@@ -539,3 +539,12 @@ class Component:
             return BlockedComponentError("Component queue is empty", self)
         else:
             return self.execute_message_contents(message)
+
+    def renew_api(self) -> NoReturn:
+        """
+        Updates the exec_list for given instantiated instance of the component.
+        """
+        self.exec_list: Dict[str, Callable] = {func_name: bound_method for
+                                               func_name, bound_method in
+                                               inspect.getmembers(self,
+                                                            inspect.ismethod)}

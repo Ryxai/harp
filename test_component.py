@@ -4,6 +4,7 @@ import random
 from functools import partial
 from Component import *
 
+# Test utilities to examine security levels in method access and use
 class Base:
     msg_key = lambda x: - x.metadata["timestamp"].timestamp().hex()
     conn_crit = lambda s, y: True
@@ -15,6 +16,10 @@ class Base:
         func in
         inspect.getmembers(Component, inspect.ismethod)}
     api_mutable = True
+    register_accessor = lambda x: True
+    register_mutator = lambda x: True
+    register_immutability: False
+
 class Strict:
     msg_key = lambda x: - x.metadata["timestamp"].timestamp().hex()
     conn_crit = lambda s, y: False
@@ -26,6 +31,10 @@ class Strict:
         func in
         inspect.getmembers(Component, inspect.ismethod)}
     api_mutable = False
+    register_accessor: lambda x: False
+    register_mutator = lambda x: False
+    register_immutability: True
+
 class Complex:
     msg_key = lambda x: - x.metadata["timestamp"].timestamp().hex()
     conn_crit = lambda s, y: hashlib.md5(s) > y.hash
@@ -33,38 +42,71 @@ class Complex:
     is_conn_crit_mut = True
     is_disc_crit_mut = True
     api_accessibility = {
-        func: (lambda x: x.truth) for
+        func: (lambda x: x.status) for
         func in
         inspect.getmembers(Component, inspect.ismethod)}
     api_mutable = True
-class Partial:
-    api_accessibility = {
-        func: (lambda x: x.truth) for
-        func
-    in inspect.getmembers(Component, inspect.ismethod)}
+    register_accessor = lambda x: x.status
+    register_mutator = lambda x: x.status
+    register_immutability = True
 
+#Functions used for creating test components
 def default_api():
+    """
+    Gets the default api of a component
+    :return:  A list of strings containing the API function names
+    """
     return Component(Base.msg_key).exec_list.keys()
 
 def partial_generator(api_list, seed = datetime.now().microsecond):
+    """
+    Randomly denys access to certain API functions
+    :param api_list: The list of functions in the api
+    :param seed: An int, allows for seeding the tests with a certain seed to create predictable results
+    :return: Returns an api where roughly 1/2 the functions are denied access
+    """
     random_gen = random.Random()
     random_gen.seed(seed)
-    return {func: (lambda x: True) for
+    return {func: (lambda x: False) for
             func in api_list if
             random_gen.random() > 0.5}
 
-def generate_component(type, api_override = None):
-    if api_override is None:
-        api_override = type.api_accessibility
-    return Component(type.msg_key,
-                     type.conn_crit,
-                     type.disc_crit,
-                     type.is_conn_crit_mut,
-                     type.is_disc_crit_mut,
-                     api_override,
-                     type.api_mutable)
+def generate_registers(register_types):
 
-def
+
+def generate_component(component_type, api_override = None):
+    """
+    Factory method, generates a component of component_type, if the api is overridden then the api_will include the
+    specified modifications
+    :param component_type: A component of the Base, Strict, Complex variety
+    :param api_override: A dict containing the permission overrides for
+    api access
+    :return: Returns a constructed component with the specified parameters
+    """
+    if api_override is None:
+        api_override = component_type.api_accessibility
+    return Component(component_type.msg_key,
+                     component_type.conn_crit,
+                     component_type.disc_crit,
+                     component_type.is_conn_crit_mut,
+                     component_type.is_disc_crit_mut,
+                     api_override,
+                     component_type.api_mutable)
+
+def add_contents_to_registers(component, register_contents):
+    component
+
+def generate_component_with_registers(component_type,api_override = None, registers=None):
+    component = generate_component(component_type, api_override)
+    if registers is not None:
+        for k,v in registers:
+            component.add(k,
+                          component_type.register_accessor,
+                          component_type.register_mutator,
+                          component_type.register_immutability,
+                          v)
+    return component
+
 
 @pytest.fixture()
 def base_component():
@@ -76,7 +118,7 @@ def strict_component():
 
 @pytest.fixture()
 def complex_component(api):
-    return generate_component(Complex)
+    return generate_component(Complex, api)
 
 @pytest.fixture(scope="module")
 def register_contents():
@@ -90,12 +132,14 @@ def register_contents():
                                                 random.randint(0,1000)),
         "random_mult_func": lambda: partial((lambda x,y: x * y),
                                                 random.randint(0,1000)),
+        "single_arg_func": lambda seed: partial(lambda x,y: x(y), seed),
+        "class": lambda seed: type("test_class", (object, object), seed)
     }
 
 class TestComponent:
 
-    def test_get(self, base_component):
-        component = generate_component(Base, )
+    def test_get(self, base_component, strict_component, complex_component, register_contents):
+        def
 
     def test_eval(self):
 

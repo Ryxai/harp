@@ -10,5 +10,5 @@ setup(
     author_email='',
     description='A dynamic message-driven VM framework written in python.'
                 'Dynamically construct/configure and manipulate virtual '
-                'machines '
+                'machines ', install_requires=['pytest']
 )
